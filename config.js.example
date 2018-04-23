@@ -1,0 +1,33 @@
+'use strict';
+
+exports.info = {
+  DIR: __dirname,
+  APP_NAME: 'service_user',
+  APP_DIR: __dirname + '/app/',
+  LOG_DIR: __dirname + '/log/',
+  ENV: "dev",
+  PORT: 5001,
+  API_VERSION: 'v1',
+  PROXY_HOST:                                   // 代理服务器地址
+  FIXED: 8,                                     // 小数精度
+  SERVER_URL: {                                 // 代理服务器接口
+    ADD_FLOW: '/agent/approvaladd',         // 新建审批流
+    APPLY_TRANSFER: '/agent/wtihdraw',      // 申请转账
+    REGISTRATION: '/agent/registadd',       // 根节点申请注册 
+    COINLIST: '/agent/coinlist',            // 币种列表
+    TOKENLIST: '/agent/tokenlist',          // 代币列表
+    TOKEN_DEPOSIT_ADDRESS: '/agent/status', // 代币充值地址
+    FLOW_STATUS: '/agent/approvaldetail'    // flow哈希是否上链
+  }
+};
+
+// 数据库配置
+exports.mysql = {
+  host: 
+  user: 
+  password: 
+  database: 
+  port: 
+};
+
+

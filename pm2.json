@@ -1,0 +1,18 @@
+//相关配置参看这里
+//http://pm2.keymetrics.io/docs/usage/application-declaration/
+{
+  "apps" : [{
+    "name"        : "boxv2",
+    "script"      : "./server.js",
+    "merge_logs"  : true,
+    "cwd"         : "./",
+    "watch"       : false,
+    "instances"        : "1",
+    "exec_mode"        : "cluster",
+    "out_file": "/dev/null",
+    "instance_var": "INSTANCE_ID",
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }]
+}
