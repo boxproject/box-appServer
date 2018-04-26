@@ -1,7 +1,28 @@
 ## BOX-appServer API
 
-> 部署前请先修改config.js.example中的配置，填写代理服务器地址
-> 同时需要对数据库进行配置
+> 部署前请先修改config.js.example中的配置，填写agent服务地址及端口
+> 
+> 同时需要对数据库进行配置, 数据库表结构位于：./scripts/box.sql
+> 
+> 使用方法：
+>
+> - 安装依赖
+>
+> ~~~
+> npm install
+> ~~~
+>
+> - 启动
+>
+> ~~~
+> npm run start
+> ~~~
+>
+> - 服务器部署建议采用pm2启动
+>
+> ~~~ 
+> pm2 start pm2.json
+> ~~~
 
 ## 1 下级员工APP递交加密后的注册申请
 
