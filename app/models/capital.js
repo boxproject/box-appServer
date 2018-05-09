@@ -43,7 +43,7 @@ exports.getTransferRecordsListByAppID = async (account_id, type, progress, page,
       from tb_transfer as t
         left join tb_currency as c
           on c.id = t.currencyID 
-      where applyerID = ? `, [account_id]);
+      where applyerID = ? order by apply_at desc limit ?, ?`, [account_id, start, end]);
     query_total = queryFormat(`select count(*) as total from tb_transfer where applyerID = ?`, [account_id]);
     // 申请者
     if (progress != -1) {
