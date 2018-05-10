@@ -48,10 +48,10 @@ exports.getBusinessFlowInfo = async (param, type) => {
   let where_str;
   if (type == 0) {
     // 根据tb_business_flow.id获取
-    where_str = ' where id = ? ';
+    where_str = queryFormat(' where id = ? ');
   } else {
     // 根据tb_business_flow.flowID
-    where_str = ' where flowID = ? ';
+    where_str = queryFormat(' where flowID = ? ');
   }
   let query = queryFormat(`
   select id, flowID as flow_id, flowHash as flow_hash, flowName as flow_name, progress,

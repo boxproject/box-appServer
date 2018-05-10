@@ -824,6 +824,58 @@ $ npm run start
 |  1011  |        您的账号已被停用。    |
 |  1012  |      请求代理服务器失败。    |
 
+
+### 20.获取交易记录列表
+
+- router:  /api/v1/capital/trade/history/list
+- 请求方式： GET 
+- 参数：
+
+|    字段              |   类型          |    备注                  |
+| :-----------------: | :-------------: | :---------------------: |
+|       currency      |      string     |         币种名称         |
+|   app_account_id    |      string     |     账号唯一标识符        |
+|        page         |      string     |     分页，页码           |
+|        limit        |      string     |    分页，单页显示数据量    |
+
+
+- 返回值
+
+```javascript
+{
+    "code": 0,
+    "message": "获取交易记录列表成功",
+    "data": {
+        "count":                // 总数据量
+        "total_pages":          // 总页数
+        "current_page":         // 当前页码
+        "currency":             // 记录对应的币种名称
+        "list": [
+            {
+                "order_number":     // 订单号
+                "amount":           // 充值/转账金额
+                "tx_info":          // 充值/转账信息
+                "progress":         // 最终审批意见，0待审批 1审批中 2驳回 3审批同意 number
+                "updated_at":       // 更新时间，时间戳
+                "type":             // 交易类型 0充值 1转账
+            },
+            ...
+        ]
+    }
+```
+
+- 错误代码
+
+|  code  |          message          |
+| :----: | :-----------------------: |
+|  1001  |          参数不完整。       |
+| 1003 | 未找到该注册申请。 |
+| 1004 | 指定账号不存在。 |
+|  1005  |        签名信息错误。        |
+|  1007  |          权限不足。         |
+|  1011  |        您的账号已被停用。    |
+|  1012  |      请求代理服务器失败。    |
+
 ## Licence
 
 Licensed under the Apache License, Version 2.0, Copyright 2018. box.la authors.
