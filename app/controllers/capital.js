@@ -76,6 +76,8 @@ exports.applyTransfer = async (ctx) => {
   // 获取币种信息
   let currency_info = await Capital.getCurrencyInfoByName(currency);
   if (!currency_info) throw new eError(ctx, ERROR_CODE + 2);
+  // 是否余额不足
+  if(amount>currency_info.balance) throw new eError(ctx, ERROR_CODE + 9);
   // 获取对应的审批流
   let flow_info = await Business.getBusinessFlowInfo(flow_id, 2);
   if (!flow_info) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 6);
@@ -246,7 +248,7 @@ exports.getCurrencyList = async (ctx) => {
   let account_info = await User.getAccountInfoByAppAccountID(app_account_id);
   if (!account_info) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 4);
   if (account_info.departured) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 11);
-  let currency_list = await Capital.getCurrencyList(key_words)
+  let currency_list = await Capital.getCurrencyList(key_words);
   return ctx.body = new rData(ctx, 'CURRENCY_LIST', { currency_list: currency_list });
 }
 
@@ -336,9 +338,11 @@ exports.addCurrency = async (ctx) => {
   let type = ctx.request.body.type;
   if (type != 0 && type != 1) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 1)
   let new_currency_list = await Capital.getNewCurrencyList(type);
+  // 获取代币充值地址
+  let token_addr = await Capital.getTokenDepositAddr();
   // 更新币种列表
   if (new_currency_list && new_currency_list.length) {
-    await Capital.updateCurrencyList(new_currency_list, type);
+    await Capital.updateCurrencyList(new_currency_list, token_addr, type);
   }
   return ctx.body = new rData(ctx, 'NOTICE');
 }
@@ -356,4 +360,26 @@ exports.getBalanceList = async (ctx) => {
   if (!account_info || account_info.departured || account_info.depth != 0) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 7);
   let assets = await Capital.getAssets(page, limit);
   return ctx.body = new rData(ctx, 'GET_BALANCE', assets);
+}
+
+/**
+ * @function 获取交易记录列表
+ * @author david
+ */
+exports.getTradeHistoryList = async (ctx) => {
+  let {currency, app_account_id} = ctx.query;
+  if(!currency || !app_account_id) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 1);
+  let page = ctx.query.page || 1;
+  let limit = ctx.query.limit || 20;
+  if (typeof page == 'string') page = parseInt(page);
+  if (typeof limit == 'string') limit = parseInt(limit);
+  // 获取账号信息
+  let account_info = await User.getAccountInfoByAppAccountID(app_account_id);
+  if (!account_info) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 4);
+  if (account_info.departured) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 11);
+  // 获取币种信息
+  let currency_info = await Capital.getCurrencyInfoByName(currency);
+  if(!currency_info) throw new eError(ctx, ERROR_CODE + 2);
+  let data = await Capital.getTradeHistoryListByAppID(currency_info.currency, currency_info.currency_id, page, limit);
+  return ctx.body = new rData(ctx, 'TTRADE_LIST', data);
 }

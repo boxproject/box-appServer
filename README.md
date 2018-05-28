@@ -1,9 +1,36 @@
-## BOX-appServer API
+## appServer
 
-> 部署前请先修改config.js.example中的配置，填写代理服务器地址
-> 同时需要对数据库进行配置
+The Staff-Manager App Server for Enterprise Token Safe BOX 
 
-## 1 下级员工APP递交加密后的注册申请
+## Before Use
+
+- Modify the configuration file `config.js.example` fill in the `PROXY_HOST` and your MySQL configuration information.
+- Rewrite the file name  `config.js.example` to `config.js`.
+- Init your MySQL with the file `/scripts/box.sql`.
+
+## Quickstart
+
+### Get source code
+
+~~~
+$ git clone https://github.com/boxproject/box-appServer.git
+~~~
+
+## Install
+
+~~~
+$ cd appServer && npm install
+~~~
+
+## Start
+
+~~~
+$ npm run start
+~~~
+
+## API
+
+### 1 下级员工APP递交加密后的注册申请
 
 + router:  /api/v1/registrations
 + 请求方式： POST
@@ -38,7 +65,7 @@
 | 1010 | 您的账号已经存在，请勿重复提交注册申请。 |
 | 1011 | 您的账号已被停用。 |
 
-## 2 上级APP轮询注册申请
+### 2 上级APP轮询注册申请
 
 - router:  /api/v1/registrations/pending
 - 请求方式： GET
@@ -76,7 +103,7 @@
 | :----: | :------------: |
 | 1001   |   参数不完整。   |
 
-## 3 下级员工APP轮询注册审批结果
+### 3 下级员工APP轮询注册审批结果
 
 - router:  /api/v1/registrations/approval/result
 - 请求方式： GET
@@ -112,7 +139,7 @@
 |  1001  |     参数不完整。       |
 |  1003  |    未找到该注册申请。   |
 
-## 4 上级APP提交对注册申请的审批信息
+### 4 上级APP提交对注册申请的审批信息
 
 - router:  /api/v1/registrations/approval
 - 请求方式： POST
@@ -145,7 +172,7 @@
 | 1005 | 签名信息错误。 |
 | 1014 | 直属上级账号已被停用。 |
 
-## 5. 提交转账申请
+### 5. 提交转账申请
 
 - router:  /api/v1/transfer/application
 - 请求方式： POST
@@ -192,12 +219,13 @@
 |  1004  |           指定账号不存在。       |
 |  1005  |           签名信息错误。         |
 |  1006  |       未找到对应的业务流程。       |
-| 1011 | 您的账号已被停用。 |
+| 1011   |           您的账号已被停用。      |
 |  2001  |   转账信息有误，请查验后重新提交。  |
 |  2002  |         未找到对应币种。          |
 |  2004  |   转账申请提交失败，请稍候重试。    |
+|  2009  |             余额不足。           |
 
-## 6. 获取转账记录列表
+### 6. 获取转账记录列表
 
 - router:  /api/v1/transfer/records/list
 - 请求方式： GET
@@ -242,7 +270,7 @@
 |  1004  |  指定账号不存在。 |
 | 1011 | 您的账号已被停用。 |
 
-## 7. 获取转账记录详情
+### 7. 获取转账记录详情
 
 - router:  /api/v1/transfer/records
 - 请求方式： GET
@@ -298,7 +326,7 @@
 | 1011 | 您的账号已被停用。 |
 |  2005  | 未找到对应的转账申请。|
 
-## 8. 提交审批意见
+### 8. 提交审批意见
 
 - router:  /api/v1/transfer/approval
 - 请求方式： POST
@@ -328,7 +356,7 @@
 |  1004  |  指定账号不存在。 |
 | 1011 | 您的账号已被停用。 |
 
-## 9. 获取审批流模板列表
+### 9. 获取审批流模板列表
 
 - router:  /api/v1/business/flows/list
 - 请求方式： GET
@@ -371,7 +399,7 @@
 |  1004  |          指定账号不存在。        |
 |  1011  | 您的账号已被停用。         |
 
-## 10. 获取审批流模板详情
+### 10. 获取审批流模板详情
 
 - router:  /api/v1/business/flow/info
 - 请求方式： GET
@@ -419,7 +447,7 @@
 |  1006  | 未找到对应的业务流程。 |
 | 1011 | 您的账号已被停用。 |
 
-## 11 根节点获取非直属下属的公钥信息列表
+### 11 根节点获取非直属下属的公钥信息列表
 
 - router:  /api/v1/employee/pubkeys/list
 - 请求方式： GET
@@ -458,7 +486,7 @@
 |  1007  |          权限不足。         |
 | 1011 | 您的账号已被停用。 |
 
-## 12 根节点获取指定非直属下属的公钥信息
+### 12 根节点获取指定非直属下属的公钥信息
 
 - router:  /api/v1/employee/pubkeys/info
 - 请求方式： GET
@@ -498,7 +526,7 @@
 | 1011 | 您的账号已被停用。 |
 | 1013 | 指定下属账号已被停用。 |
 
-## 13 上级管理员获取下属账号列表
+### 13 上级管理员获取下属账号列表
 
 - router:  /api/v1/accounts/list
 - 请求方式： POST
@@ -543,7 +571,7 @@
 |  1004  |  指定账号不存在。 |
 | 1011 | 您的账号已被停用。 |
 
-## 14. 创建审批流模板
+### 14. 创建审批流模板
 
 - router:  /api/v1/business/flow
 - 请求方式： POST
@@ -605,7 +633,7 @@
 |  3002  | 指定业务流模板已存在，请勿重复提交。|
 |  3004  |      创建审批流模板失败。     |
 
-## 15. 获取余额
+### 15. 获取余额
 
 - router:  /api/v1/capital/balance
 - 请求方式： GET
@@ -637,7 +665,7 @@
 |  1001  |          参数不完整。       |
 |  1007  |       权限不足。       |
 
-## 16. 获取币种列表
+### 16. 获取币种列表
 
 - router:  /api/v1/capital/currency/list
 - 请求方式： GET
@@ -673,7 +701,7 @@
 |  1004  |       指定账号不存在。       |
 | 1011 | 您的账号已被停用。 |
 
-## 17. 获取下属账号详情
+### 17. 获取下属账号详情
 
 - router:  /api/v1/accounts/info
 - 请求方式： GET
@@ -715,7 +743,7 @@
 | 1011 | 您的账号已被停用。 |
 | 1013 | 指定下属账号已被停用。 |
 
-## 18. 删除/替换员工账号
+### 18. 删除/替换员工账号
 
 - router:  /api/v1/employee/account/del
 - 请求方式： POST
@@ -762,7 +790,7 @@
 | 1013   | 指定下属账号已被停用。 |
 | 1015 | 非同级用户账号无法替换。 |
 
-## 19.员工反馈上级审核注册结果有误
+### 19.员工反馈上级审核注册结果有误
 
 - router:  /api/v1/registrations/approval/cancel
 - 请求方式： POST 
@@ -795,3 +823,76 @@
 |  1007  |          权限不足。         |
 |  1011  |        您的账号已被停用。    |
 |  1012  |      请求代理服务器失败。    |
+
+
+### 20.获取交易记录列表
+
+- router:  /api/v1/capital/trade/history/list
+- 请求方式： GET 
+- 参数：
+
+|    字段              |   类型          |    备注                  |
+| :-----------------: | :-------------: | :---------------------: |
+|       currency      |      string     |         币种名称         |
+|   app_account_id    |      string     |     账号唯一标识符        |
+|        page         |      string     |     分页，页码           |
+|        limit        |      string     |    分页，单页显示数据量    |
+
+
+- 返回值
+
+```javascript
+{
+    "code": 0,
+    "message": "获取交易记录列表成功",
+    "data": {
+        "count":                // 总数据量
+        "total_pages":          // 总页数
+        "current_page":         // 当前页码
+        "currency":             // 记录对应的币种名称
+        "list": [
+            {
+                "order_number":     // 订单号
+                "amount":           // 充值/转账金额
+                "tx_info":          // 充值/转账信息
+                "progress":         // 最终审批意见，0待审批 1审批中 2驳回 3审批同意 number
+                "updated_at":       // 更新时间，时间戳
+                "type":             // 交易类型 0充值 1转账
+            },
+            ...
+        ]
+    }
+```
+
+- 错误代码
+
+|  code  |          message          |
+| :----: | :-----------------------: |
+|  1001  |          参数不完整。       |
+| 1003 | 未找到该注册申请。 |
+| 1004 | 指定账号不存在。 |
+|  1005  |        签名信息错误。        |
+|  1007  |          权限不足。         |
+|  1011  |        您的账号已被停用。    |
+|  1012  |      请求代理服务器失败。    |
+
+## Licence
+
+Licensed under the Apache License, Version 2.0, Copyright 2018. box.la authors.
+
+~~~
+ Copyright 2018. box.la authors.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+~~~
+

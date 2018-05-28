@@ -43,7 +43,7 @@ exports.getTransferRecordsListByAppID = async (account_id, type, progress, page,
       from tb_transfer as t
         left join tb_currency as c
           on c.id = t.currencyID 
-      where applyerID = ? `, [account_id]);
+      where applyerID = ? order by apply_at desc limit ?, ?`, [account_id, start, end]);
     query_total = queryFormat(`select count(*) as total from tb_transfer where applyerID = ?`, [account_id]);
     // 申请者
     if (progress != -1) {
@@ -69,7 +69,7 @@ exports.getTransferRecordsListByAppID = async (account_id, type, progress, page,
     // 审批者
     if (progress == -1) {
       // str = queryFormat(' and rt.comments <> 0 ');
-      str = '';
+      str = queryFormat('');
       // 获取所有类型的转账记录
     } else if (progress == 0) {
       str = queryFormat(` and rt.comments = ? and t.progress < 2 `, [progress]);
@@ -143,10 +143,10 @@ exports.getTransferInfo = async (param, type) => {
   let where_str;
   if (type == 0) {
     // 根据tb_transfer.id获取
-    where_str = ' where t.id = ? ';
+    where_str = queryFormat(' where t.id = ? ');
   } else if (type == 1) {
     // 根据order_number获取
-    where_str = ' where t.orderNum = ? ';
+    where_str = queryFormat(' where t.orderNum = ? ');
   }
   let query = queryFormat(`
   select t.id as trans_id, t.orderNum as order_number, t.transBoxHash as trans_hash, a.account as applyer_acc, 
@@ -237,6 +237,23 @@ exports.getCurrencyList = async (key_words) => {
     query = queryFormat('select currency, address from tb_currency where available = 1 and currency like ?', ['%' + key_words + '%']);
   }
   let result = await P(pool, 'query', query);
+  // 更新充值地址
+  if(result.length) {
+    let host = config.info.PROXY_HOST;
+    let url = config.info.SERVER_URL.TOKEN_DEPOSIT_ADDRESS;
+    let data = await P(RPC, 'rpcRequest', 'GET', host, url, null);
+    for(let r of result) {
+      if(!r.address) {
+        if(r.currency == 'ETH') {
+          let query = queryFormat('update tb_currency set address = ? where currency = ?', [data.Status.ContractAddress, r.currency]);
+          await P(pool, 'query', query);
+        } else if(r.currency == 'BTC') {
+          let query = queryFormat('update tb_currency set address = ? where currency = ?', [data.Status.BtcAddress, r.currency]);
+          await P(pool, 'query', query);
+        }
+      }
+    }
+  }
   return result.length ? result : [];
 }
 
@@ -307,7 +324,16 @@ exports.getNewCurrencyList = async (type) => {
     return (type == 0) ? data.CoinStatus : data.TokenInfos
   }
 }
-
+/**
+ * @function 获取代币充值地址
+ * @author david
+ */
+exports.getTokenDepositAddr = async () => {
+  let host = config.info.PROXY_HOST;
+  let url = config.info.SERVER_URL.TOKEN_DEPOSIT_ADDRESS;
+  let data = await P(RPC, 'rpcRequest', 'GET', host, url, null);
+  return data.Status.ContractAddress ? data.Status.ContractAddress : null;
+}
 /**
  * @function 更新币种列表
  * @param {array} elder_list    // 原始币种列表
@@ -315,8 +341,8 @@ exports.getNewCurrencyList = async (type) => {
  * @param {string/number} type  // 0币种 1代币
  * @author david
  */
-exports.updateCurrencyList = async (new_list, type) => {
-  let query_update = queryFormat('update tb_currency set available = 0 where isToken = ? and id <> 0', [type]);
+exports.updateCurrencyList = async (new_list, token_addr, type) => {
+  let query_update = queryFormat('update tb_currency set available = 0 where isToken = ? and id <> 1', [type]);
   // let query = queryFormat('select id from tb_currency where isToken = ?', [type]);
   for (let r of new_list) {
     let query_selc = queryFormat('select id from tb_currency where id = ?', [r.Category]);
@@ -329,7 +355,7 @@ exports.updateCurrencyList = async (new_list, type) => {
       if(type == 0) {
         query = queryFormat('insert into tb_currency (id, currency, factor, isToken) values (?, ?, ?, ?) ', [r.Category, r.Name, r.Decimals, type]);
       } else {
-        query = queryFormat('insert into tb_currency (id, currency, factor, address, isToken) values (?, ?, ?, ?, ?) ', [r.Category, r.TokenName, r.Decimals, r.ContractAddr, type]);
+        query = queryFormat('insert into tb_currency (id, currency, factor, address, isToken) values (?, ?, ?, ?, ?) ', [r.Category, r.TokenName, r.Decimals, token_addr, type]);
       } 
       await P(pool, 'query', query);
     }
@@ -470,4 +496,35 @@ exports.getApproversSignByAppID = async (app_account_id, trans_id) => {
   where acc.appAccountID = ? and rt.transID = ?`, [app_account_id, trans_id]);
   let data = await P(pool, 'query', query);
   return data.length ? data[0] : null;
+}
+
+/**
+ * @function 获取交易记录列表
+ * @param {string} currency_name      // 币种名称
+ * @param {string} currency_id        // 币种ID
+ * @param {number} page, limit
+ * @author david
+ */
+exports.getTradeHistoryListByAppID = async (currency_name, currency_id,page,limit) => {
+  let data = [];
+  let query_total = queryFormat(`
+  select sum(total) as total from (
+    select count(*) as total, currencyID from tb_deposit_history group by currencyID
+  union all
+    select count(*) as total, currencyID from tb_transfer group by currencyID) t where currencyID = ?`, [currency_id]);
+  let query = queryFormat(`
+  select orderNum as order_number, amount, 'deposit' tx_info, 3 progress, UNIX_TIMESTAMP(updatedAt) as updated_at, 0 type from tb_deposit_history where currencyID = ?
+ union all
+  select orderNum as order_number, txInfo as tx_info, amount, progress, UNIX_TIMESTAMP(updatedAt) as updated_at, 1 type from tb_transfer where currencyID = ?`, [currency_id, currency_id])
+  let total_info = await P(pool, 'query', query_total);
+  if(total_info.length && total_info[0].total > 0) {
+    data = await P(pool, 'query', query);
+  }
+  return {
+    count: total_info[0].total,
+    total_pages: Math.ceil(total_info[0].total / limit) || 1,
+    current_page: page,
+    currency: currency_name,
+    list: data
+  }
 }

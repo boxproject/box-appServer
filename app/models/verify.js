@@ -69,7 +69,7 @@ exports.isAdminAccount = async (app_account_id) => {
  * @author  david
  */
 exports.hasApplyedRegistration = async (applyer_id, captain_id) => {
-  let query = queryFormat('select id from tb_registration_history where applyer = ? and captain = ? and isDeleted = 1', [applyer_id, captain_id]);
+  let query = queryFormat('select id from tb_registration_history where applyer = ? and captain = ? and isDeleted = 0', [applyer_id, captain_id]);
   let data = await P(pool, 'query', query);
   return data.length ? true : false;
 }
