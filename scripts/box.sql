@@ -65,7 +65,7 @@ CREATE TABLE `tb_transfer` (
 , txID                      varchar(100) NULL DEFAULT NULL                            comment '对应公链的txid'
 , applyContent              varchar(1000) NOT NULL                                    comment '申请者提交的转账信息'
 , applyerSign               varchar(1000) NOT NULL                                    comment '申请者对该笔转账申请的签名'
-, arrived                   tinyint(1) NOT NULL DEFAULT 0                             comment '是否到账 1-打包中 2-到账'
+, arrived                   tinyint(1) NOT NULL DEFAULT 0                             comment '是否到账 1-打包中 2-到账 -1-转账失败'
 , createdAt                 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP  			      comment '申请创建时间'
 , updatedAt                 timestamp NULL DEFAULT NULL                               comment '更新时间'
 )ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
@@ -78,7 +78,7 @@ drop table if exists `tb_review_transfer`;
 CREATE TABLE `tb_review_transfer` (
   transID                   bigint(20) NOT NULL                                       comment '转账申请表的ID'
 , managerAccID              int(10) NOT NULL                                          comment '账号ID'
-, comments                  tinyint(1) NOT NULL DEFAULT 0                             comment '审批意见，1驳回 2审批同意'
+, comments                  tinyint(1) NOT NULL DEFAULT 0                             comment '审批意见，1驳回 2审批同意 -1未提交审批意见，但本级已经同意审批'
 , sign                      varchar(1000) NULL DEFAULT NULL                           comment '审批者签名'  
 , createdAt                 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP              comment '审批创建时间'
 )ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;

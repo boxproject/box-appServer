@@ -63,8 +63,6 @@ router
   .get('/capital/currency/list', Capital.getCurrencyList)
   // 获取交易记录列表
   .get('/capital/trade/history/list', Capital.getTradeHistoryList)
-  // 获取交易记录详情
-  // .get('/capital/trade/history/info', Capital.getTradeHistoryInfo)
   // 代理服务器上报转账结果
     // 最终结果
   .post('/capital/withdraw', Capital.withdrawResult)

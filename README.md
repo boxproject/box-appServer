@@ -849,15 +849,15 @@ $ npm run start
         "count":                // 总数据量
         "total_pages":          // 总页数
         "current_page":         // 当前页码
-        "currency":             // 记录对应的币种名称
         "list": [
             {
                 "order_number":     // 订单号
                 "amount":           // 充值/转账金额
                 "tx_info":          // 充值/转账信息
                 "progress":         // 最终审批意见，0待审批 1审批中 2驳回 3审批同意 number
+                "currency":         // 记录对应的币种名称
                 "updated_at":       // 更新时间，时间戳
-                "type":             // 交易类型 0充值 1转账
+                "type":             // 交易类型 1充值 0转账
             },
             ...
         ]

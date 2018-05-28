@@ -232,28 +232,75 @@ exports.getCurrencyInfoByName = async (currency) => {
  * @author david
  */
 exports.getCurrencyList = async (key_words) => {
-  let query = queryFormat(`select currency, address from tb_currency where available = 1`);
-  if (key_words) {
-    query = queryFormat('select currency, address from tb_currency where available = 1 and currency like ?', ['%' + key_words + '%']);
-  }
-  let result = await P(pool, 'query', query);
-  // 更新充值地址
-  if(result.length) {
-    let host = config.info.PROXY_HOST;
-    let url = config.info.SERVER_URL.TOKEN_DEPOSIT_ADDRESS;
-    let data = await P(RPC, 'rpcRequest', 'GET', host, url, null);
-    for(let r of result) {
-      if(!r.address) {
-        if(r.currency == 'ETH') {
-          let query = queryFormat('update tb_currency set address = ? where currency = ?', [data.Status.ContractAddress, r.currency]);
-          await P(pool, 'query', query);
-        } else if(r.currency == 'BTC') {
-          let query = queryFormat('update tb_currency set address = ? where currency = ?', [data.Status.BtcAddress, r.currency]);
-          await P(pool, 'query', query);
+  // 更新可用的币种列表
+  let host = config.info.PROXY_HOST;
+  let deposit_addr = config.info.SERVER_URL.TOKEN_DEPOSIT_ADDRESS;
+  let coinlist_url = config.info.SERVER_URL.COINLIST;
+  let tokenlist_url = config.info.SERVER_URL.TOKENLIST
+  let depo_data = await P(RPC, 'rpcRequest', 'GET', host, deposit_addr, null);
+  let coin_list_data = await P(RPC, 'rpcRequest', 'GET', host, coinlist_url, null);
+  let token_list_data = await P(RPC, 'rpcRequest', 'GET', host, tokenlist_url, null);
+  // BTC充值地址
+  let btc_address = depo_data.Status.BtcAddress;
+  // ETH合约充值地址
+  let eth_address = depo_data.Status.ContractAddress;
+  // 更新可用的代币信息
+  let conn = await P(pool, 'getConnection');
+  try {
+    await P(conn, 'beginTransaction');
+    let eth_query = queryFormat('select address from tb_currency where id = 1');
+    let eth_data = await P(conn, 'query', eth_query);
+    if (!eth_data[0].address) {
+      eth_query = queryFormat('update tb_currency set address = ? where id = 1', [eth_address]);
+      await P(conn, 'query', eth_query);
+    }
+    // 将所有币种置为不可用状态
+    let disable_currency = queryFormat('update tb_currency set available = 0 where id <> 1');
+    await P(conn, 'query', disable_currency)
+    // 更新可用的代币列表
+    if (token_list_data.TokenInfos) {
+      let token_list = token_list_data.TokenInfos;
+      if (token_list.length) {
+        for (let r of token_list) {
+          let query = queryFormat('update tb_currency set available = 1 where id = ?', [r.Category]);
+          let result = await P(conn, 'query', query);
+          if (result.changedRows == 0) {
+            query = queryFormat('insert into tb_currency (id, currency, factor, isToken, address) values (?, ?, ?, ?, ?)', [r.Category, r.TokenName, r.Decimals, 1, r.ContractAddr]);
+            await P(conn, 'query', query)
+          }
         }
       }
     }
+    // 更新可用的币种列表
+    if (coin_list_data.CoinStatus) {
+      let coin_list = coin_list_data.CoinStatus;
+      for (let r of coin_list) {
+        if (r.Used) {
+          let addr;
+          if (r.Name == 'BTC') {
+            addr = btc_address
+          }
+          let query = queryFormat('update tb_currency set available = 1, address = ? where id = ?', [addr, r.Category]);
+          let result = await P(conn, 'query', query);
+          if (result.changedRows == 0) {
+            query = queryFormat('insert into tb_currency (id, currency, factor, address) values (?, ?, ?, ?)', [r.Category, r.Name, r.Decimals, addr]);
+            await P(conn, 'query', query)
+          }
+        }
+      }
+    }
+    await P(conn, 'commit');
+  } catch (err) {
+    await P(conn, 'rollback');
+    throw err;
+  } finally {
+    conn.release();
   }
+  let query_result = queryFormat(`select currency, address from tb_currency where available = 1`);
+  if (key_words) {
+    query_result = queryFormat('select currency, address from tb_currency where available = 1 and currency like ?', ['%' + key_words + '%']);
+  }
+  let result = await P(pool, 'query', query_result);
   return result.length ? result : [];
 }
 
@@ -342,23 +389,60 @@ exports.getTokenDepositAddr = async () => {
  * @author david
  */
 exports.updateCurrencyList = async (new_list, token_addr, type) => {
-  let query_update = queryFormat('update tb_currency set available = 0 where isToken = ? and id <> 1', [type]);
-  // let query = queryFormat('select id from tb_currency where isToken = ?', [type]);
-  for (let r of new_list) {
-    let query_selc = queryFormat('select id from tb_currency where id = ?', [r.Category]);
-    let data = await P(pool, 'query', query_selc);
-    if (data.length) {
-      let query = queryFormat('update tb_currency set available = 1 where id = ?', [r.Category]);
-      await P(pool, 'query', query);
-    } else {
-      let query;
-      if(type == 0) {
-        query = queryFormat('insert into tb_currency (id, currency, factor, isToken) values (?, ?, ?, ?) ', [r.Category, r.Name, r.Decimals, type]);
-      } else {
-        query = queryFormat('insert into tb_currency (id, currency, factor, address, isToken) values (?, ?, ?, ?, ?) ', [r.Category, r.TokenName, r.Decimals, token_addr, type]);
-      } 
-      await P(pool, 'query', query);
+  let conn = await P(pool, 'getConnection');
+  let upd_list = [];
+  let add_list = [];
+  let query_upd, query_add;
+  try {
+    await P(conn, 'beginTransaction');
+    if (type == 0) {
+      let query_update = queryFormat('update tb_currency set available = 0 where isToken = ? and id <> 1', [type]);
+      await P(conn, 'query', query_update);
     }
+    // 获取已有的币种列表
+    let query_old_coin = queryFormat('select id from tb_currency where isToken = ?', type);
+    let old_coin_list = await P(conn, 'query', query_old_coin);
+    for (let i = 0; i < new_list.length; i++) {
+      for (let j = 0; j < old_coin_list.length; j++) {
+        if (new_list[i].Category == old_coin_list[j].id) {
+          upd_list.push(new_list[i].Category);
+        }
+      }
+      if (type == 0) {
+        add_list.push({ id: new_list[i].Category, address: null, currency: new_list[i].Name, factor: new_list[i].Decimals, isToken: type });
+      } else if (type == 1) {
+        add_list.push({ id: new_list[i].Category, address: token_addr, currency: new_list[i].TokenName, factor: new_list[i].Decimals, isToken: type });
+      }
+    }
+    if (upd_list.length) {
+      query_upd = queryFormat('update tb_currency set available = 1 where id in ( ? ');
+      if (upd_list.length > 1) {
+        query_upd = query_upd + queryFormat(', ? ');
+      }
+      query_upd = query_upd + queryFormat(')', upd_list);
+      await P(conn, 'query', query_upd);
+    }
+
+    if (add_list.length) {
+      query_add = queryFormat('insert into tb_currency (id, currency, factor, isToken, address) values (?, ?, ?, ?, ?) ', [add_list[0].id, add_list[0].currency, add_list[0].factor, type, add_list[0].address]);
+      if (add_list.length > 1) {
+        query_add = query_add + queryFormat(' (?, ?, ?, ?, ?) ', [add_list[i].id, add_list[i].currency, add_list[i].factor, type, add_list[i].address]);
+      }
+      await P(conn, 'query', query_add);
+
+    }
+    let eth_query = queryFormat('select address from tb_currency where id = 1');
+    let eth_data = await P(conn, 'query', eth_query);
+    if (!eth_data.address) {
+      eth_query = queryFormat('update tb_currency set address = ? where id = 1', [token_addr]);
+      await P(conn, 'query', eth_query);
+    }
+    await P(conn, 'commit');
+  } catch (err) {
+    await P(conn, 'rollback');
+    throw err;
+  } finally {
+    conn.release();
   }
 }
 
@@ -385,30 +469,43 @@ exports.updateBalance = async (amount, currency_id, type) => {
  */
 exports.initManagerComments = async (flow_content, trans_id, location) => {
   let approvers_info = flow_content.approval_info[location.level];
-    let pass = 0;
-    let reject = 0;
-    for (let r of approvers_info.approvers) {
-      let comments = await this.getTxInfoByApprover(r.app_account_id, trans_id);
-      if (comments == 2) reject++;
-      if (comments == 3) pass++;
+  let pass = 0;
+  let reject = 0;
+  for (let r of approvers_info.approvers) {
+    let comments = await this.getTxInfoByApprover(r.app_account_id, trans_id);
+    if (comments == 2) reject++;
+    if (comments == 3) pass++;
+  }
+  if ((pass >= approvers_info.require) && (location.level + 1 < flow_content.approval_info.length)) {
+    // 某一层approvers审批通过
+    let new_approvers = flow_content.approval_info[location.level + 1].approvers;
+    let manager_account_info = await User.getAccountInfoByAppAccountID(new_approvers[0].app_account_id);
+    let query_s = queryFormat('select transID from tb_review_transfer where transID = ? and managerAccID in ( ?', [trans_id, manager_account_info.id]);
+    let query = queryFormat('insert into tb_review_transfer (transID, managerAccID) values (?, ?)', [trans_id, manager_account_info.id]);
+    for (let i = 1; i < new_approvers.length; i++) {
+      manager_account_info = await User.getAccountInfoByAppAccountID(new_approvers[i].app_account_id);
+      query += queryFormat(', (?, ?)', [trans_id, manager_account_info.id]);
+      query_s += queryFormat(', ? ', [manager_account_info.id]);
     }
-    if ((pass >= approvers_info.require) && (location.level + 1 < flow_content.approval_info.length)) {
-      // 某一层approvers审批通过
-      let new_approvers = flow_content.approval_info[location.level + 1].approvers;
-      let manager_account_info = await User.getAccountInfoByAppAccountID(new_approvers[0].app_account_id);
-      let query_s = queryFormat('select transID from tb_review_transfer where transID = ? and managerAccID in ( ?', [trans_id, manager_account_info.id]);
-      let query = queryFormat('insert into tb_review_transfer (transID, managerAccID) values (?, ?)', [trans_id, manager_account_info.id]);
-      for (let i = 1; i < new_approvers.length; i++) {
-        manager_account_info = await User.getAccountInfoByAppAccountID(new_approvers[i].app_account_id);
-        query += queryFormat(', (?, ?)', [trans_id, manager_account_info.id]);
-        query_s += queryFormat(', ? ', [manager_account_info.id]);
+    query_s += queryFormat(')');
+    let conn = await P(pool, 'getConnection');
+    let tx_id;
+    try {
+      await P(conn, 'beginTransaction');
+      let transfer_info = await P(conn, 'query', query_s);
+      if (transfer_info.length == 0) {
+        let query_over_approval = queryFormat('update tb_review_transfer set comments = -1 where transID = ? and sign IS NULL', trans_id);
+        await P(conn, 'query', query_over_approval)
+        await P(conn, 'query', query);
       }
-      query_s += queryFormat(')');
-      let result = await P(pool, 'query', query_s);
-      if(result.length == 0) {
-        await P(pool, 'query', query);
-      }
+      await P(conn, 'commit');
+    } catch (err) {
+      await P(conn, 'rollback');
+      throw err;
+    } finally {
+      conn.release();
     }
+  }
 }
 
 /**#
@@ -419,22 +516,22 @@ exports.initManagerComments = async (flow_content, trans_id, location) => {
  */
 exports.getTxProgress = async (flow_content, trans_id) => {
   let flow_approval_info = flow_content.approval_info;
-  for(let i=0; i<flow_approval_info.length; i++) {
+  for (let i = 0; i < flow_approval_info.length; i++) {
     let appr = 0;
     let rej = 0;
     let require = flow_approval_info[i].require;
     let approvers = flow_approval_info[i].approvers;
-    for(let r of approvers) {
+    for (let r of approvers) {
       let comments = await this.getTxInfoByApprover(r.app_account_id, trans_id);
-      if(comments == 2) {
+      if (comments == 2) {
         rej++;
-      } else if(comments == 3) {
+      } else if (comments == 3) {
         appr++;
       }
     }
-    if(rej>approvers.length - require) {
+    if (rej > approvers.length - require) {
       return 2;
-    } else if(appr + rej < require) {
+    } else if (appr + rej < require) {
       return 1;
     }
   }
@@ -471,11 +568,11 @@ exports.getAssets = async (page, limit) => {
 exports.getTxApproversSign = async (flow_content, trans_id) => {
   let data = [];
   let approvers_info = flow_content.approval_info;
-  for(let r of approvers_info) {
+  for (let r of approvers_info) {
     let approvers = r.approvers;
-    for(let a of approvers) {
+    for (let a of approvers) {
       let sign = await this.getApproversSignByAppID(a.app_account_id, trans_id);
-      if(sign && sign.length) data.push({
+      if (sign && sign.length) data.push({
         appid: a.app_account_id,
         sign: sign.sign
       })
@@ -505,26 +602,30 @@ exports.getApproversSignByAppID = async (app_account_id, trans_id) => {
  * @param {number} page, limit
  * @author david
  */
-exports.getTradeHistoryListByAppID = async (currency_name, currency_id,page,limit) => {
+exports.getTradeHistoryListByAppID = async (currency_name, currency_id, page, limit) => {
+  let start = (page - 1) * limit;
+  let end = limit;
   let data = [];
   let query_total = queryFormat(`
-  select sum(total) as total from (
-    select count(*) as total, currencyID from tb_deposit_history group by currencyID
+  select count(*) as total from (
+    select distinct(orderNum) from tb_deposit_history where currencyID = ?
   union all
-    select count(*) as total, currencyID from tb_transfer group by currencyID) t where currencyID = ?`, [currency_id]);
+    select distinct(orderNum) from tb_transfer where currencyID = ?) as t`, [currency_id, currency_id]);
   let query = queryFormat(`
-  select orderNum as order_number, amount, 'deposit' tx_info, 3 progress, UNIX_TIMESTAMP(updatedAt) as updated_at, 0 type from tb_deposit_history where currencyID = ?
- union all
-  select orderNum as order_number, txInfo as tx_info, amount, progress, UNIX_TIMESTAMP(updatedAt) as updated_at, 1 type from tb_transfer where currencyID = ?`, [currency_id, currency_id])
+  select * from (
+      select distinct(orderNum) as order_number, amount, ? tx_info, 3 progress, 2 arrived, ? currency, UNIX_TIMESTAMP(updatedAt) as apply_at, 1 type from tb_deposit_history where currencyID = ?
+    union all
+      select distinct(orderNum) as order_number, amount, txInfo as tx_info , progress, arrived, ? currency,UNIX_TIMESTAMP(createdAt) as apply_at, 0 type from tb_transfer where currencyID = ?) as a 
+  order by a.apply_at desc limit ?, ?`, ['deposit', currency_name, currency_id, currency_name, currency_id, start, end]);
   let total_info = await P(pool, 'query', query_total);
-  if(total_info.length && total_info[0].total > 0) {
+  if (total_info.length && total_info[0].total > 0) {
     data = await P(pool, 'query', query);
   }
   return {
     count: total_info[0].total,
     total_pages: Math.ceil(total_info[0].total / limit) || 1,
     current_page: page,
-    currency: currency_name,
+    // currency: currency_name,
     list: data
   }
 }

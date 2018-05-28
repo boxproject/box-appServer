@@ -31,12 +31,23 @@ const RPC = require('../../utils/rpc');
  * @author  david
  */
 exports.addRegistration = async (applyer, captain, msg, applyer_account) => {
-  let query = queryFormat('insert into tb_registration_history set regID = uuid(), applyer = ?, captain = ?, msg = ?, applyerAcc = ?', [applyer, captain, msg, applyer_account]);
-  let data = await P(pool, 'query', query);
-  let reg_id = data.insertId;
-  query = queryFormat('select regID from tb_registration_history where id = ?', [reg_id]);
-  data = await P(pool, 'query', query);
-  return data.length ? data[0].regID : null;
+  let regid;
+  let conn = await P(pool, 'getConnection');
+  try {
+    let query = queryFormat('insert into tb_registration_history set regID = uuid(), applyer = ?, captain = ?, msg = ?, applyerAcc = ?', [applyer, captain, msg, applyer_account]);
+    let data = await P(conn, 'query', query);
+    let reg_id = data.insertId;
+    query = queryFormat('select regID from tb_registration_history where id = ?', [reg_id]);
+    data = await P(conn, 'query', query);
+    if(data.length) regid = data[0].regID;
+    await P(conn, 'commit');
+  } catch (err) {
+    await P(conn, 'rollback');
+    throw err;
+  } finally {
+    conn.release();
+  }
+  return regid;
 }
 
 /**
@@ -77,14 +88,28 @@ exports.getRegistration = async (captain, applyer) => {
  */
 exports.getRegistrationByRegID = async (reg_id, is_deleted) => {
   let query = queryFormat(`
+  SELECT id, regID as reg_id, applyer as applyer_id, captain as captain_id,
+    msg, consent, applyerAcc as applyer_account
+  FROM tb_registration_history
+  WHERE regID = ? ` , [reg_id]);
+  if (is_deleted == 0 || is_deleted == 1) {
+    query = query + queryFormat(' and isDeleted = ?', [is_deleted]);
+  }
+  let result = await P(pool, 'query', query);
+  return result.length ? result[0] : null;
+}
+
+/**
+ * @function 获取用户账号对应的注册信息
+ * @author david
+ */
+exports.getRegistrationByRegIDWithAcc = async (reg_id) => {
+  let query = queryFormat(`
   SELECT rh.id, rh.regID as reg_id, rh.applyer as applyer_id, rh.captain as captain_id,
     rh.msg, rh.consent, ifnull(acc.depth, -1) as depth, rh.applyerAcc as applyer_account, acc.cipherText as cipher_text
   FROM tb_registration_history rh
     LEFT JOIN tb_accounts_info acc ON acc.regID = rh.id
   WHERE rh.regID = ? ` , [reg_id]);
-  if (is_deleted == 0 || is_deleted == 1) {
-    query = query + queryFormat(' and isDeleted = ?', [is_deleted]);
-  }
   let result = await P(pool, 'query', query);
   return result.length ? result[0] : null;
 }
@@ -119,8 +144,7 @@ exports.getRegistrationByID = async (id, is_deleted) => {
  */
 exports.updateCaptainApprovalInfo = async (reg_id, consent) => {
   let query = queryFormat('update tb_registration_history set consent = ?, isDeleted = ? where regID = ?', [consent, 1, reg_id]);
-  let result = await P(pool, 'query', query);
-  return result.legth ? result : null;
+  await P(pool, 'query', query);
 }
 
 /**
@@ -141,10 +165,11 @@ exports.delRegistrationInfoByDateTime = async (min_date_time, max_date_time) => 
  */
 exports.getAccountInfoByAppAccountID = async (app_account_id) => {
   let query = queryFormat(`
-  SELECT id, account, pubKey as pub_key, appAccountID as app_account_id, regID as reg_id, 
-    lft, rgt, depth, cipherText as cipher_text, isDepartured as departured 
-  FROM tb_accounts_info 
-  WHERE appAccountID = ?`, [app_account_id]);
+  SELECT acc.id, acc.account, acc.pubKey as pub_key, acc.appAccountID as app_account_id, acc.regID as reg_id, 
+    acc.lft, acc.rgt, acc.depth, acc.cipherText as cipher_text, acc.isDepartured as departured
+  FROM tb_accounts_info acc
+  	left join tb_registration_history rh on rh.applyer = acc.appAccountID 
+  WHERE acc.appAccountID = ? and rh.consent = 2`, [app_account_id]);
   let result = await P(pool, 'query', query);
   return result.length ? result[0] : null;
 }
@@ -208,7 +233,7 @@ exports.searchAccountInfoByAccount = async (account, page, limit) => {
     from tb_accounts_info as acc
       left join tb_registration_history as rh
         on rh.id = acc.regID
-    where acc.account like ?
+    where rh.consent = 2 and acc.account like ?
     limit ?, ?`, ['%' + account + '%', start, end]);
   let data = await P(pool, 'query', query);
   let data_count = await P(pool, 'query', query_count);
@@ -233,14 +258,13 @@ exports.searchAccountInfoByAccount = async (account, page, limit) => {
  */
 exports.getAccountInfoByAccountID = async (account_id) => {
   let query = queryFormat(`
-    select acc.account, acc.appAccountID as app_account_id, acc.pubKey as pub_key,
-      rt.sign, ifnull(rt.comments, 0) as progress, lft, rgt, depth
-    from tb_accounts_info as acc
-      left join tb_review_transfer as rt
-        on rt.managerAccID = acc.id
-    where acc.id = ?`, [account_id]);
+  select acc.account, acc.appAccountID as app_account_id, acc.pubKey as pub_key, acc.lft, acc.rgt, acc.depth
+  from tb_accounts_info as acc
+    left join tb_registration_history as rh
+      on rh.applyer = acc.appAccountID
+  where acc.id = ? and rh.consent = 2`, [account_id]);
   let data = await P(pool, 'query', query);
-  return data[0];
+  return data.length ? data[0] : null;
 }
 
 /**
@@ -284,13 +308,13 @@ exports.genAccount = async (account, app_account_id, pub_key, cipher_text, en_pu
     is_uploaded: is_uploaded,
     depth: depth
   })
-  if (captain_account_rgt == 0) {
-    let query = queryFormat('select ifnull(max(rgt), 0) as max_rgt from tb_accounts_info');
-    let data = await P(pool, 'query', query);
-    captain_account_rgt = data[0].max_rgt + 1;
-  }
   let conn = await P(pool, 'getConnection');
   try {
+    if (captain_account_rgt == 0) {
+      let query = queryFormat('select ifnull(max(rgt), 0) as max_rgt from tb_accounts_info');
+      let data = await P(conn, 'query', query);
+      captain_account_rgt = data[0].max_rgt + 1;
+    }
     await P(conn, 'beginTransaction');
     let query_rgt = queryFormat('update tb_accounts_info set rgt = rgt + 2 where rgt >= ?', [captain_account_rgt]);
     let query_lft = queryFormat('update tb_accounts_info set lft = lft + 2 where lft > ?', [captain_account_rgt]);
@@ -348,7 +372,7 @@ exports.getEmployeeEnPubKeyInfoList = async (app_account_id) => {
 	  ON acc.appAccountID = t.applyer
   LEFT JOIN tb_registration_history AS rh 
 	  ON rh.id = acc.regID
-  WHERE acc.isUploaded = 0 AND acc.isDepartured = 0`;
+  WHERE acc.isUploaded = 0 AND acc.isDepartured = 0 and rh.consent = 2`;
   let query = queryFormat(str, [app_account_id]);
   let result = await P(pool, 'query', query);
   let account_ids = []
@@ -395,7 +419,7 @@ exports.getEmployeeEnPubKeyInfo = async (app_account_id) => {
   from tb_accounts_info as acc
     left join tb_registration_history as rh 
       on rh.id = acc.regID
-  where acc.appAccountID = ? `, [app_account_id]);
+  where acc.appAccountID = ? and rh.consent = 2`, [app_account_id]);
   let result = await P(pool, 'query', query);
   return result.length ? result[0] : null;
 }
@@ -458,7 +482,7 @@ exports.changeEmployee = async (app_account_id, employee_info) => {
 exports.replaceEmployee = async (member_app_account_id, leader_id) => {
   let leader_info = await this.getAccountInfoByAccountID(leader_id);
   let member = await this.getAccountInfoByAppAccountID(member_app_account_id);
-  if(leader_info.lft > member.lft) {
+  if (leader_info.lft > member.lft) {
     let query_mov_lft = queryFormat('update tb_accounts_info set lft = lft - 2 where isDepartured = 0 and lft > ?', [member.rgt]);
     let query_mov_rgt = queryFormat('update tb_accounts_info set rgt = rgt - 2 where isDepartured = 0 and rgt > ?', [member.rgt]);
     await P(pool, 'query', query_mov_lft);
@@ -471,7 +495,7 @@ exports.replaceEmployee = async (member_app_account_id, leader_id) => {
     await P(conn, 'beginTransaction');
     let query_rgt = queryFormat('update tb_accounts_info set rgt = rgt + 2 where rgt >= ? and isDepartured = 0', [leader_info.rgt]);
     let query_lft = queryFormat('update tb_accounts_info set lft = lft + 2 where lft > ? and isDepartured = 0', [leader_info.rgt]);
-    let query_add = queryFormat('update tb_accounts_info set lft = ?, rgt = ?, depth = ? where appAccountID = ?', [leader_info.rgt, leader_info.rgt+1, leader_info.depth+1, member.app_account_id]);
+    let query_add = queryFormat('update tb_accounts_info set lft = ?, rgt = ?, depth = ? where appAccountID = ?', [leader_info.rgt, leader_info.rgt + 1, leader_info.depth + 1, member.app_account_id]);
     await P(conn, 'query', query_rgt);
     await P(conn, 'query', query_lft);
     await P(conn, 'query', query_add);

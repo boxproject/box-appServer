@@ -73,3 +73,24 @@ exports.hasApplyedRegistration = async (applyer_id, captain_id) => {
   let data = await P(pool, 'query', query);
   return data.length ? true : false;
 }
+
+/**
+ * @function 检测账号是否存在
+ * @param {string} app_account
+ * @return {bool}
+ * @author david
+ */
+exports.accExists = async (app_account) => {
+  let query = queryFormat('select acc.id from tb_accounts_info acc left join tb_registration_history rh on rh.applyerAcc = acc.account where acc.account = ? and rh.consent = 2', [app_account]);
+  let data = await P(pool, 'query', query);
+  return data.length ? true : false;
+}
+
+/**
+ * @function 检测转账地址是否为充值地址
+ */
+exports.toIsFrom = async (to_addr) => {
+  let query = queryFormat('select address from tb_currency where address = ?', [to_addr]);
+  let data = await P(pool, 'query', query);
+  return data.length ? true : false;
+}
