@@ -17,7 +17,8 @@ exports.info = {
     COINLIST: '/agent/coinlist',            // 币种列表
     TOKENLIST: '/agent/tokenlist',          // 代币列表
     TOKEN_DEPOSIT_ADDRESS: '/agent/status', // 代币充值地址
-    FLOW_STATUS: '/agent/approvaldetail'    // flow哈希是否上链
+    FLOW_STATUS: '/agent/approvaldetail',   // flow哈希是否上链
+    APPROVALED_FLOWS: '/agent/approvallist' // 获取已通过审批的审批流列表
   }
 };
 

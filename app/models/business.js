@@ -48,10 +48,10 @@ exports.getBusinessFlowInfo = async (param, type) => {
   let where_str;
   if (type == 0) {
     // 根据tb_business_flow.id获取
-    where_str = ' where id = ? ';
+    where_str = queryFormat(' where id = ? ');
   } else {
     // 根据tb_business_flow.flowID
-    where_str = ' where flowID = ? ';
+    where_str = queryFormat(' where flowID = ? ');
   }
   let query = queryFormat(`
   select id, flowID as flow_id, flowHash as flow_hash, flowName as flow_name, progress,
@@ -141,16 +141,19 @@ exports.getTxApprovalInfoByFlowContentTransID = async (flow_content, trans_id) =
  * @param  {number} limit
  * @author david
  */
-exports.getFlowList = async (manager_id, page, limit) => {
+exports.getFlowList = async (manager_id, page, limit, type) => {
   let start = (page - 1) * limit;
   let end = limit;
+  let str = queryFormat('');
+  if(type == 1) {
+    str = queryFormat(' and progress = 3 ');
+  }
   let query_count = queryFormat(`select count(*) as count from tb_business_flow where founderID = ?`, [manager_id]);
+  query_count = query_count + str;
   let query = queryFormat(`
   select id, flowID as flow_id, flowName as flow_name, content, flowHash as flow_hash, progress
   from tb_business_flow
-  where founderID = ?
-  order by createdAt desc
-  limit ?, ?`, [manager_id, start, end]);
+  where founderID = ? `, [manager_id]) + str + queryFormat(`order by createdAt desc limit ?, ?`, [start, end]);
   let data = await P(pool, 'query', query);
   let data_count = await P(pool, 'query', query_count);
   if (data.length) {
@@ -176,16 +179,21 @@ exports.getFlowList = async (manager_id, page, limit) => {
  * @param  {number} limit
  * @author david
  */
-exports.searchFlowByName = async (manager_id, key_words, page, limit) => {
+exports.searchFlowByName = async (manager_id, key_words, page, limit, type) => {
   let start = (page - 1) * limit;
   let end = limit;
-  let query_count = queryFormat(`select count(*) as count from tb_business_flow where founderID = ? flowName like ?`, [manager_id, '%' + key_words + '%']);
+  let str = queryFormat('');
+  if(type == 1) {
+    str = queryFormat(' and progress = 3 ');
+  }
+  let query_count = queryFormat(`select count(*) as count from tb_business_flow where founderID = ? and flowName like ?`, [manager_id, '%' + key_words + '%']);
+  query_count = query_count + str;
   let query = queryFormat(`
   select id, flowID as flow_id, flowName as flow_name, content, flowHash as flow_hash, progress
   from tb_business_flow
-  where founderID = ? and flowName like ?
+  where founderID = ?`, [manager_id]) + str + queryFormat(`and flowName like ?
   order by createdAt desc
-  limit ?, ?`, [manager_id, '%' + key_words + '%', start, end]);
+  limit ?, ?` , [ '%' + key_words + '%', start, end]);
   let data = await P(pool, 'query', query);
   let data_count = await P(pool, 'query', query_count);
   if (data.length) {
@@ -253,7 +261,7 @@ exports.businessFlowStatus = async (flow_hash) => {
     } else if (flow_on_chain.ApprovalInfo.Status == 0 || flow_on_chain.ApprovalInfo.Status == 1 || flow_on_chain.ApprovalInfo.Status == 3 || flow_on_chain.ApprovalInfo.Status == 4 || flow_on_chain.ApprovalInfo.Status == 6) {
       return 1;
     }
-  } 
+  }
   return 2
 }
 
@@ -263,17 +271,17 @@ exports.businessFlowStatus = async (flow_hash) => {
  * @author david
  */
 exports.updateFlowStatus = async (flow_list) => {
-  for(let r of flow_list) {
-    if(r.progress < 2) {
+  for (let r of flow_list) {
+    if (r.progress < 2) {
       let flow_on_chain_status = await this.businessFlowStatus(r.flow_hash);
-      if(flow_on_chain_status) {
+      if (flow_on_chain_status) {
         // 更新审批流审批状态
         let query = queryFormat('update tb_business_flow set progress = ? where id = ?', [flow_on_chain_status, r.id]);
         await P(pool, 'query', query);
         r.progress = flow_on_chain_status;
       }
     }
-  } 
+  }
 }
 
 /**
@@ -322,4 +330,43 @@ exports.getManagerLocation = async (flow_content, app_account_id) => {
     }
   }
   return location;
+}
+
+/**
+ * @func 获取最新的审批流列表状态之前，先将所有审批流审批状态更新为审批失败状态，progress=2
+ * @param null
+ * @author david
+ */
+exports.disableFlows = async () => {
+  let query = queryFormat('update tb_business_flow set progress = 2 where progress <> 0');
+  await P(pool, 'query', query);
+}
+
+/**
+ * @function 从代理服务器获取已通过审批的审批流并更新数据库
+ * @param null
+ * @author david
+ */
+exports.getApprovaledFlow = async () => {
+  let host = config.info.PROXY_HOST;
+  let url = config.info.SERVER_URL.APPROVALED_FLOWS;
+  let data = await P(RPC, 'rpcRequest', 'GET', host, url, { type: 2 });
+  if (data && data.RspNo == 0) {
+    if (data.ApprovalInfos) {
+      let approvaled_flows = data.ApprovalInfos;
+      if(approvaled_flows.length) {
+        let query_flow = queryFormat(`update tb_business_flow set progress = 3 where flowHash in (? `, [approvaled_flows[0].Hash]);
+        if(approvaled_flows.length > 1) {
+          for(let i=1; i<approvaled_flows.length; i++) {
+            query_flow += queryFormat(', ? ', [approvaled_flows[i].Hash])
+          }
+        }
+        query_flow = query_flow + queryFormat(')');
+        await P(pool, 'query', query_flow);
+      }
+    }
+  } else {
+    return false
+  }
+  return true
 }

@@ -73,15 +73,22 @@ exports.applyTransfer = async (ctx) => {
   let apply_info_json = JSON.parse(apply_info);
   let { tx_info, to_address, miner, amount, currency, timestamp } = apply_info_json
   if (!apply_info || !tx_info || !to_address || !miner || !amount || !currency || !timestamp) throw new eError(ctx, ERROR_CODE + 1);
+  // 转账地址 from != to
+  let to_is_from = await Verify.toIsFrom(to_address);
+  if(to_is_from) throw new eError(ctx, ERROR_CODE + 1);
   // 获取币种信息
   let currency_info = await Capital.getCurrencyInfoByName(currency);
   if (!currency_info) throw new eError(ctx, ERROR_CODE + 2);
+  // 是否余额不足
+  let balance = new BigNumber(currency_info.balance);
+  let amount_big = new BigNumber(amount);
+  if (amount_big.gte(balance)) throw new eError(ctx, ERROR_CODE + 9);
   // 获取对应的审批流
   let flow_info = await Business.getBusinessFlowInfo(flow_id, 2);
   if (!flow_info) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 6);
   // 查询审批流上链状态
   let flow_on_chain_status = await Business.businessFlowStatus(flow_info.flow_hash);
-  logger.info('提交转账申请获取审批流上链状态', {hash: flow_info.flow_hash, status: flow_on_chain_status});
+  logger.info('提交转账申请获取审批流上链状态', { hash: flow_info.flow_hash, status: flow_on_chain_status });
   // 更新审批流状态
   await Business.updateFlowStatus([flow_info]);
   if (flow_on_chain_status != 3) {
@@ -171,7 +178,7 @@ exports.approvalTransfer = async (ctx) => {
   let flow_on_chain_status = await Business.businessFlowStatus(tx_flow.flow_hash);
   // 更新本地审批流状态
   logger.info('审批转账_获取审批流上链状态', flow_on_chain_status);
-  await Business.updateFlowStatus([tx_info]);
+  // await Business.updateFlowStatus([tx_info]);
   if (flow_on_chain_status != 3) {
     // 审批流哈希未上链，转账失败
     await Capital.updateTxProgress(tx_info.trans_id, 2);
@@ -182,11 +189,12 @@ exports.approvalTransfer = async (ctx) => {
   // 获取订单审批进度
   let tx_progress = await Capital.getTxProgress(tx_flow.content, tx_info.trans_id);
   if (tx_progress == 1 && location.level + 1 < tx_flow.content.approval_info.length) {
+    // 将未提交审批意见的其余审批者对该订单的审批意见progress置为-1
     await Capital.initManagerComments(tx_flow.content, tx_info.trans_id, location);
   }
   // 获取订单审批最新进度
   tx_progress = await Capital.getTxProgress(tx_flow.content, tx_info.trans_id);
-  logger.info('审批后的订单进度', {progress: tx_progress, trans_id: tx_info.trans_id});
+  logger.info('审批后的订单进度', { progress: tx_progress, trans_id: tx_info.trans_id });
   // 获取各级审批人员签名信息
   let approval_info = await Capital.getTxApproversSign(tx_flow.content, tx_info.trans_id)
   // 审批通过，转账
@@ -221,7 +229,7 @@ exports.approvalTransfer = async (ctx) => {
     }
   }
   // 更新订单审批进度
-  logger.info('订单最终审批进度', {trans_id: tx_info.trans_id, progress: tx_progress});
+  logger.info('订单最终审批进度', { trans_id: tx_info.trans_id, progress: tx_progress });
   await Capital.updateTxProgress(tx_info.trans_id, tx_progress);
   return ctx.body = new rData(ctx, 'APPROVAL_TX');
 }
@@ -246,7 +254,7 @@ exports.getCurrencyList = async (ctx) => {
   let account_info = await User.getAccountInfoByAppAccountID(app_account_id);
   if (!account_info) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 4);
   if (account_info.departured) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 11);
-  let currency_list = await Capital.getCurrencyList(key_words)
+  let currency_list = await Capital.getCurrencyList(key_words);
   return ctx.body = new rData(ctx, 'CURRENCY_LIST', { currency_list: currency_list });
 }
 
@@ -275,12 +283,16 @@ exports.withdrawResultOfID = async (ctx, next) => {
     wd_hash: wd_hash,
     tx_id: tx_id
   });
-  if (!wd_hash || !tx_id) throw new eError(ctx, UNIVERSAL_ERRORCODE + 1);
-  // 获取该笔转账记录详情
-  let tx_info = await Capital.getTransferInfoByTxBoxHash(wd_hash);
-  if (tx_info) {
-    // 插入本地数据库 tb_transfer_history,set progress = 0
-    await Capital.addTransferArrivedInfo(wd_hash, tx_id, 1);
+  // if (!wd_hash || !tx_id) throw new eError(ctx, UNIVERSAL_ERRORCODE + 1);
+  if (wd_hash) {
+    // 获取该笔转账记录详情
+    let tx_info = await Capital.getTransferInfoByTxBoxHash(wd_hash);
+    if (tx_info && tx_id) {
+      // 插入本地数据库 tb_transfer_history,set progress = 0
+      await Capital.addTransferArrivedInfo(wd_hash, tx_id, 1);
+    } else if(tx_info && !tx_id) {
+      await Capital.addTransferArrivedInfo(wd_hash, 0, -1);
+    }
   }
   return ctx.body = new rData(ctx, 'NOTICE');
 }
@@ -335,11 +347,13 @@ exports.depositSuccess = async (ctx) => {
 exports.addCurrency = async (ctx) => {
   let type = ctx.request.body.type;
   if (type != 0 && type != 1) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 1)
-  let new_currency_list = await Capital.getNewCurrencyList(type);
-  // 更新币种列表
-  if (new_currency_list && new_currency_list.length) {
-    await Capital.updateCurrencyList(new_currency_list, type);
-  }
+  // let new_currency_list = await Capital.getNewCurrencyList(type);
+  // // 获取代币充值地址
+  // let token_addr = await Capital.getTokenDepositAddr();
+  // // 更新币种列表
+  // if (new_currency_list && new_currency_list.length) {
+  //   await Capital.updateCurrencyList(new_currency_list, token_addr, type);
+  // }
   return ctx.body = new rData(ctx, 'NOTICE');
 }
 
@@ -356,4 +370,26 @@ exports.getBalanceList = async (ctx) => {
   if (!account_info || account_info.departured || account_info.depth != 0) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 7);
   let assets = await Capital.getAssets(page, limit);
   return ctx.body = new rData(ctx, 'GET_BALANCE', assets);
+}
+
+/**
+ * @function 获取币种交易流水
+ * @author david
+ */
+exports.getTradeHistoryList = async (ctx) => {
+  let { currency, app_account_id } = ctx.query;
+  if (!currency || !app_account_id) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 1);
+  let page = ctx.query.page || 1;
+  let limit = ctx.query.limit || 20;
+  if (typeof page == 'string') page = parseInt(page);
+  if (typeof limit == 'string') limit = parseInt(limit);
+  // 获取账号信息
+  let account_info = await User.getAccountInfoByAppAccountID(app_account_id);
+  if (!account_info) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 4);
+  if (account_info.departured) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 11);
+  // 获取币种信息
+  let currency_info = await Capital.getCurrencyInfoByName(currency);
+  if (!currency_info) throw new eError(ctx, ERROR_CODE + 2);
+  let data = await Capital.getTradeHistoryListByAppID(currency_info.currency, currency_info.currency_id, page, limit);
+  return ctx.body = new rData(ctx, 'TTRADE_LIST', data);
 }
