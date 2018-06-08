@@ -358,7 +358,7 @@ exports.getApprovaledFlow = async () => {
         let query_flow = queryFormat(`update tb_business_flow set progress = 3 where flowHash in (? `, [approvaled_flows[0].Hash]);
         if(approvaled_flows.length > 1) {
           for(let i=1; i<approvaled_flows.length; i++) {
-            query_flow += queryFormat(', ? ', [approvaled_flows[i].Hash])
+            query_flow = query_flow + queryFormat(', ? ', [approvaled_flows[i].Hash])
           }
         }
         query_flow = query_flow + queryFormat(')');

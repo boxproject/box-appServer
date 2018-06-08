@@ -153,7 +153,8 @@ exports.cancelApprovalRegistration = async (ctx) => {
   logger.info('员工反馈注册审批出错_验签', sign_pass);
   if (!sign_pass) throw new eError(ctx, ERROR_CODE + 5);
   // 回滚信息
-  await User.changeEmployee(applyer_id, account_info.lft, account_info.rgt);
+  // await User.changeEmployee(applyer_id, account_info.lft, account_info.rgt);
+  await User.changeEmployee(applyer_id, account_info.map(r=>{return [{"app_account_id": r.app_account_id, "cipher_text": r.cipher_text}]}));
   // 如果是根节点账号
   if (account_info.depth == 0) {
     let data = await User.applyTegistrationToServer(reg_id, reg_info.msg, applyer_id, reg_info.captain_id, account_info.account, 1);

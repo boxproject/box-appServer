@@ -95,11 +95,14 @@ exports.applyTransfer = async (ctx) => {
     throw new eError(ctx, UNIVERSAL_ERROR_CODE + 6);
   } else {
     // 提交转账申请
-    let transfer_id = await Capital.applyTransfer(UUID(), tx_info, account_info.id, currency_info.currency_id, amount, flow_info.id, apply_info, sign, flow_info.content.approval_info[0].approvers);
-    logger.info('提交转账申请_生成订单号', transfer_id);
-    let transfer_info = await Capital.getTransferInfo(transfer_id, 0);
-    if (!transfer_info) throw new eError(ctx, ERROR_CODE + 4);
-    return ctx.body = new rData(ctx, 'APPLY_TRANSFER', { order_number: transfer_info.order_number })
+    let order_num = UUID();
+    // 获取审批者账号信息
+    let approvers_ids = await User.getApproversInfoByAccount(flow_info.content.approval_info[0].approvers);
+    let transfer_id = await Capital.applyTransfer(order_num, tx_info, account_info.id, currency_info.currency_id, amount, flow_info.id, apply_info, sign, approvers_ids);
+    logger.info('提交转账申请_生成订单号', order_num);
+    // let transfer_info = await Capital.getTransferInfo(transfer_id, 0);
+    // if (!transfer_info) throw new eError(ctx, ERROR_CODE + 4);
+    return ctx.body = new rData(ctx, 'APPLY_TRANSFER', { order_number: order_num })
   }
 }
 
@@ -178,7 +181,7 @@ exports.approvalTransfer = async (ctx) => {
   let flow_on_chain_status = await Business.businessFlowStatus(tx_flow.flow_hash);
   // 更新本地审批流状态
   logger.info('审批转账_获取审批流上链状态', flow_on_chain_status);
-  // await Business.updateFlowStatus([tx_info]);
+  await Business.updateFlowStatus([{flow_hash: tx_flow.flow_hash}]);
   if (flow_on_chain_status != 3) {
     // 审批流哈希未上链，转账失败
     await Capital.updateTxProgress(tx_info.trans_id, 2);
@@ -224,7 +227,7 @@ exports.approvalTransfer = async (ctx) => {
     let upload_pass = await Capital.uploadTxChain(obj);
     if (!upload_pass) {
       // 提交转账失败, 更改订单状态
-      tx_progress = 2;
+      await Capital.transferFailed(tx_info.trans_id);
       throw new eError(ctx, ERROR_CODE + 7);
     }
   }
@@ -307,7 +310,7 @@ exports.depositSuccess = async (ctx) => {
     tx_id: tx_id,
     category: category
   });
-  if (!from || !to || !amount || !tx_id || (category != 0 && !category)) throw new eError(ctx, UNIVERSAL_ERRORCODE + 1);
+  if (!from || !to || !amount || !tx_id || (category != 0 && !category)) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 1);
   // 获取币种单位
   let currency_id = category;
   let currency_info = await Capital.getCurrencyByID(currency_id);

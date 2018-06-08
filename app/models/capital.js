@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const User = require('./user');
 const RPC = require('../../utils/rpc');
 const Business = require('./business');
+const BigNumber = require('bignumber.js');
 
 /**
  * @function 根据账号app端唯一标识符获取转账列表
@@ -106,21 +107,21 @@ exports.getTransferRecordsListByAppID = async (account_id, type, progress, page,
  * @return: transfer_info.id
  * @author：david
  */
-exports.applyTransfer = async (order_number, tx_info, applyer_id, currency_id, amount, flow_id, apply_content, applyer_sign, captain_account_ids) => {
+exports.applyTransfer = async (order_number, tx_info, applyer_id, currency_id, amount, flow_id, apply_content, applyer_sign, captain_ids) => {
   let trans_hash = '0x' + crypto.createHash('sha256').update(apply_content).digest('hex');
   let query = queryFormat('insert into tb_transfer set orderNum = ?, txInfo = ?, transBoxHash = ?, applyerID = ?, currencyID = ?, amount = ?, flowID = ?, applyContent = ?, applyerSign = ?',
     [order_number, tx_info, trans_hash, applyer_id, currency_id, amount, flow_id, apply_content, applyer_sign]);
+  let tx_id
   let conn = await P(pool, 'getConnection');
-  let tx_id;
   try {
     await P(conn, 'beginTransaction');
     let transfer_info = await P(conn, 'query', query);
     tx_id = transfer_info.insertId;
-    let captain_account_info = await User.getAccountInfoByAppAccountID(captain_account_ids[0].app_account_id);
-    let captain_review_query = queryFormat('insert into tb_review_transfer (transID, managerAccID) values (?, ?)', [tx_id, captain_account_info.id]);
-    for (let i = 1; i < captain_account_ids.length; i++) {
-      let captain = await User.getAccountInfoByAppAccountID(captain_account_ids[i].app_account_id);
-      captain_review_query += queryFormat(', (?, ?)', [tx_id, captain.id]);
+    let captain_review_query = queryFormat('insert into tb_review_transfer (transID, managerAccID) values (?, ?)', [tx_id, captain_ids[0].id]);
+    if (captain_ids.length > 1) {
+      for (let i = 1; i < captain_ids.length; i++) {
+        captain_review_query += queryFormat(', (?, ?)', [tx_id, captain_ids[i].id]);
+      }
     }
     await P(conn, 'query', captain_review_query);
     await P(conn, 'commit');
@@ -211,6 +212,8 @@ exports.updateTxProgress = async (trans_id, progress) => {
   let query = queryFormat('update tb_transfer set progress = ? where id = ?', [progress, trans_id]);
   if (progress == 3) {
     query = queryFormat('update tb_transfer set progress = ?, arrived = 1 where id = ?', [progress, trans_id]);
+  } else if(progress == 2) {
+    query = queryFormat('update tb_transfer set progress = ?, arrived = -1 where id = ?', [progress, trans_id])
   }
   await P(pool, 'query', query);
 }
@@ -241,9 +244,15 @@ exports.getCurrencyList = async (key_words) => {
   let coin_list_data = await P(RPC, 'rpcRequest', 'GET', host, coinlist_url, null);
   let token_list_data = await P(RPC, 'rpcRequest', 'GET', host, tokenlist_url, null);
   // BTC充值地址
-  let btc_address = depo_data.Status.BtcAddress;
+  let btc_address = '';
+  if(depo_data.Status.BtcAddress) {
+    btc_address = depo_data.Status.BtcAddress;
+  }
   // ETH合约充值地址
-  let eth_address = depo_data.Status.ContractAddress;
+  let eth_address = '';
+  if (depo_data.Status.ContractAddress) {
+    eth_address = depo_data.Status.ContractAddress;
+  }
   // 更新可用的代币信息
   let conn = await P(pool, 'getConnection');
   try {
@@ -454,10 +463,22 @@ exports.updateCurrencyList = async (new_list, token_addr, type) => {
  * @author david
  */
 exports.updateBalance = async (amount, currency_id, type) => {
-  if (typeof amount != 'number') amount = Number(amount);
-  if (type == 1) amount = -amount;
+  // 获取余额
+  let query_balance = queryFormat('select balance from tb_currency where id = ?', [currency_id]);
+  let balanceInfo = await P(pool, 'query', query_balance);
+  let balance = 0;
+  if(balanceInfo.length) {
+    balance = balanceInfo[0].balance;
+  }
+  balance = new BigNumber(balance);
+  amount = new BigNumber(amount)
+  if (type == 1) {
+    balance = balance.minus(amount).toFixed()
+  } else {
+    balance = balance.plus(amount).toFixed()
+  }
   if (typeof currency_id != 'number') currency_id = Number(currency_id);
-  let query = queryFormat('update tb_currency set balance = balance + ? where id = ?', [amount, currency_id]);
+  let query = queryFormat('update tb_currency set balance = ? where id = ?', [balance, currency_id]);
   await P(pool, 'query', query);
 }
 
@@ -628,4 +649,13 @@ exports.getTradeHistoryListByAppID = async (currency_name, currency_id, page, li
     // currency: currency_name,
     list: data
   }
+}
+
+/**
+ * @function 转账失败
+ * @author david
+ */
+exports.transferFailed = async (trans_id) => {
+  let query = queryFormat('update tb_transfer set progress = 3, arrived = -1 where id = ?', trans_id);
+  await P(pool, 'query', query);
 }

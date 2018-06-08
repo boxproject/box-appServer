@@ -366,6 +366,7 @@ $ npm run start
 | :--------------: | :-------------: | :---------------------: |
 |  app_account_id  |   string        |     账号唯一标识符        |
 |    key_words     |   string        |       搜索关键字         |
+|       type       |   string        |  审批流状态 1已通过审批    |
 |      page        |   string        |     分页，页码           |
 |      limit       |   string        |   分页，单页显示数据量     |
 

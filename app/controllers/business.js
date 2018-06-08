@@ -99,7 +99,6 @@ exports.getFlowList = async (ctx) => {
     data = await Business.getFlowList(manager_id, page, limit, type);
   }
   if (type == 1 && data) await Business.updateFlowStatus(data.list);
-
   return ctx.body = new rData(ctx, 'FLOW_LIST', data);
 }
 

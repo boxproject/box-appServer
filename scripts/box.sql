@@ -62,7 +62,7 @@ CREATE TABLE `tb_transfer` (
 , amount                    varchar(10) NOT NULL                                      comment '转账金额'
 , flowID                    bigint(10) NOT NULL DEFAULT 1                             comment '对应于哪个业务结构'
 , progress                  tinyint(1) NOT NULL  DEFAULT 0                            comment '最终审批意见，0待审批 1审批中 2驳回 3审批同意'
-, txID                      varchar(100) NULL DEFAULT NULL                            comment '对应公链的txid'
+, txID                      varchar(100) NULL DEFAULT NULL UNIQUE                     comment '对应公链的txid'
 , applyContent              varchar(1000) NOT NULL                                    comment '申请者提交的转账信息'
 , applyerSign               varchar(1000) NOT NULL                                    comment '申请者对该笔转账申请的签名'
 , arrived                   tinyint(1) NOT NULL DEFAULT 0                             comment '是否到账 1-打包中 2-到账 -1-转账失败'
@@ -122,12 +122,13 @@ CREATE TRIGGER `trg_business_flow_update` BEFORE UPDATE ON `tb_business_flow` FO
 #充值记录表
 drop table if exists `tb_deposit_history`;
 CREATE TABLE `tb_deposit_history` (
-  id                        bigint(20) PRIMARY KEY  AUTO_INCREMENT                    comment '充值记录ID，主键'
+  id                        bigint(20)  AUTO_INCREMENT                                comment '充值记录ID，主键'
 , orderNum                  varchar(50) NOT NULL                                      comment '订单号'
 , fromAddr                  varchar(66) NOT NULL                                      comment '付款方地址'
 , toAddr                    varchar(66) NOT NULL                                      comment '收款方地址'
 , currencyID                int(10) NOT NULL                                          comment '币种ID'                         
 , amount                    varchar(100) NULL DEFAULT NULL                            comment '充值金额'
-, txID                      varchar(100) NULL DEFAULT NULL                            comment '对应公链的txid' 
+, txID                      varchar(100) NOT NULL DEFAULT 0                           comment '对应公链的txid' 
 , updatedAt                 timestamp NULL DEFAULT CURRENT_TIMESTAMP                  comment '充值时间'
+, PRIMARY KEY (`id`,`fromAddr`,`toAddr`,`txID`)
 )ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;

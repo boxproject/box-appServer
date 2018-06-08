@@ -39,7 +39,7 @@ exports.addRegistration = async (applyer, captain, msg, applyer_account) => {
     let reg_id = data.insertId;
     query = queryFormat('select regID from tb_registration_history where id = ?', [reg_id]);
     data = await P(conn, 'query', query);
-    if(data.length) regid = data[0].regID;
+    if (data.length) regid = data[0].regID;
     await P(conn, 'commit');
   } catch (err) {
     await P(conn, 'rollback');
@@ -427,8 +427,14 @@ exports.getEmployeeEnPubKeyInfo = async (app_account_id) => {
 /**
  * @function 删除/替换下属账号
  * @param {string} app_account_id   // 指定下属账号唯一标识符
- * @param {number} lft
- * @param {string} employee_info    // 下属账号信息
+ * @param {array} employee_info    // 下属账号信息
+ *        employee_info的结构为
+ *        [{
+ *            app_account_id: 
+ *            cipher_text:
+ *          },
+ *          ...
+ *        ]
  */
 exports.changeEmployee = async (app_account_id, employee_info) => {
   let elder_leader = await this.getAccountInfoByAppAccountID(app_account_id);
@@ -555,4 +561,23 @@ exports.changeCipherInfo = async (employee_info, cipher_texts) => {
     }
   }
   return data;
+}
+
+/**
+ * @function 获取审批者账号信息
+ * @author david
+ */
+exports.getApproversInfoByAccount = async (approvers_accounts_list) => {
+  let query;
+  if (approvers_accounts_list.length == 1) {
+    query = queryFormat("select id from tb_accounts_info where appAccountID = ?", approvers_accounts_list[0].app_account_id);
+  } else if (approvers_accounts_list.length > 1) {
+    query = queryFormat("select id from tb_accounts_info where appAccountID in ( ? ", approvers_accounts_list[0].app_account_id);
+    for (let i = 1; i < approvers_accounts_list.length; i++) {
+      query = query + queryFormat(" , ? ", approvers_accounts_list[i].app_account_id);
+    }
+    query = query + queryFormat(" ) ");
+  }
+  let result = await P(pool, 'query', query);
+  return result.length ? result : []
 }

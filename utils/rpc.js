@@ -41,6 +41,7 @@ exports.rpcRequest = async function (method, host, url, params_obj, callback) {
             if (repos.RspNo == 0) {
                 callback(repos);
             } else {
+                logger.info('repRequest error url:', url);
                 logger.info('rpcRequest error:', repos);
                 callback(false);
             }
