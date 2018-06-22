@@ -82,7 +82,7 @@ exports.applyTransfer = async (ctx) => {
   // 是否余额不足
   let balance = new BigNumber(currency_info.balance);
   let amount_big = new BigNumber(amount);
-  if (amount_big.gte(balance)) throw new eError(ctx, ERROR_CODE + 9);
+  if (amount_big.gt(balance)) throw new eError(ctx, ERROR_CODE + 9);
   // 获取对应的审批流
   let flow_info = await Business.getBusinessFlowInfo(flow_id, 2);
   if (!flow_info) throw new eError(ctx, UNIVERSAL_ERROR_CODE + 6);
@@ -271,10 +271,16 @@ exports.withdrawResult = async function (ctx, next) {
   // 获取该笔转账记录详情
   let tx_info = await Capital.getTransferInfoByTxBoxHash(wd_hash);
   if (tx_info) {
+    let tx_content
     // 插入本地数据库 tb_transfer_history,set progress = 2
     await Capital.addTransferArrivedInfo(wd_hash, tx_id, 2);
+    let miner = 0;
+    if (tx_info.currencyID == 0) {
+      tx_content = JSON.parse(tx_info.applyContent);
+      miner = tx_content.miner
+    }
     // 更新余额
-    await Capital.updateBalance(tx_info.amount, tx_info.currencyID, 1);
+    await Capital.updateBalance(tx_info.amount, miner, tx_info.currencyID, 1);
   }
   return ctx.body = new rData(ctx, 'NOTICE');
 }
@@ -334,7 +340,7 @@ exports.depositSuccess = async (ctx) => {
   let order_num = UUID();
   await Capital.depositHistory(order_num, from_array, to, currency_info.id, amount, tx_id);
   // 更新余额
-  await Capital.updateBalance(amount, category, 0);
+  await Capital.updateBalance(amount, 0, category, 0);
   // 更新充值地址
   if (currency_info) {
     await Capital.initContractAddress(category, to);

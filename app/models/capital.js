@@ -462,7 +462,7 @@ exports.updateCurrencyList = async (new_list, token_addr, type) => {
  * @param {number} type 0-充值 1-提现
  * @author david
  */
-exports.updateBalance = async (amount, currency_id, type) => {
+exports.updateBalance = async (amount, miner, currency_id, type) => {
   // 获取余额
   let query_balance = queryFormat('select balance from tb_currency where id = ?', [currency_id]);
   let balanceInfo = await P(pool, 'query', query_balance);
@@ -472,6 +472,10 @@ exports.updateBalance = async (amount, currency_id, type) => {
   }
   balance = new BigNumber(balance);
   amount = new BigNumber(amount)
+  if(miner >0) {
+    miner = new BigNumber(miner);
+    amount = amount.plus(miner)
+  }
   if (type == 1) {
     balance = balance.minus(amount).toFixed()
   } else {

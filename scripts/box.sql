@@ -109,7 +109,7 @@ CREATE TABLE `tb_business_flow` (
 , founderID                 int(10) NOT NULL                                          comment '创建者账号ID'
 , founderSign               varchar(1000) NOT NULL                                    comment '创建者对模板内容的签名'
 , content                   text                                                      comment '业务结构内容'
-, singleLimit               varchar(10) NOT NULL                                      comment '单笔转账限额' 
+, singleLimit               varchar(20) NOT NULL                                      comment '单笔转账限额' 
 , progress                  tinyint(1) NOT NULL DEFAULT 0                             comment '审批流模板审批进度 0待审批 2审批拒绝 3审批通过'                    
 , createdAt                 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP              comment '业务结构创建时间'
 , updatedAt                 timestamp NULL DEFAULT NULL                               comment '审批更新时间' 
