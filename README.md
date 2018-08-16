@@ -1,8 +1,10 @@
 # appServer
 
-[![Build Status](https://travis-ci.org/boxproject/box-appServer.svg?branch=master)](https://travis-ci.org/boxproject/box-appServer) [![Hex.pm](https://img.shields.io/hexpm/l/plug.svg)](https://www.apache.org/licenses/LICENSE-2.0) [![language](https://img.shields.io/badge/golang-%5E1.10-blue.svg)]()
+The Staff and Manager App Server for Enterprise Token Safe BOX 
 
-The Staff-Manager App Server for Enterprise Token Safe BOX 
+## Notice
+
+We have refactored this project in Golang. So this repository now has been abandoned, please use the new [appServerGo](https://github.com/boxproject/appServerGo) instead of this.
 
 ## Before Use
 
